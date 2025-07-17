@@ -1,6 +1,6 @@
 # Yeyo Downloader
 
-![Yeyo Downloader Showcase](https://raw.githubusercontent.com/your-username/yeyo_downloader/main/screenshot.png) <!-- Replace with your own screenshot link -->
+![Yeyo Downloader Showcase](./screenshot.png)
 
 Yeyo Downloader adalah aplikasi desktop yang modern dan mudah digunakan untuk mengunduh video dan audio dari berbagai platform online. Dibangun dengan Tauri, Rust, dan React, aplikasi ini menawarkan performa tinggi dalam jejak yang ringkas.
 
@@ -66,5 +66,3 @@ Hasil build akan tersedia di direktori `src-tauri/target/release/`.
 - [**Python**](https://www.python.org/) - Digunakan untuk menjalankan skrip `yt-dlp`.
 - [**yt-dlp**](https://github.com/yt-dlp/yt-dlp) - Inti dari kemampuan pengunduhan aplikasi ini.
 
----
-Dibuat dengan ❤️ oleh [Nama Anda]
