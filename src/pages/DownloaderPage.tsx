@@ -1,9 +1,9 @@
 import { Download, Trash2, Video, Music, CheckCircle, XCircle, Loader, Link as LinkIcon, Settings, Activity, ChevronDown, Info, ListVideo } from 'lucide-react';
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/tauri';
-import { listen } from '@tauri-apps/api/event';
-import { BaseDirectory, readTextFile } from '@tauri-apps/api/fs';
 import { Link } from 'react-router-dom';
+import { useDownload } from '../contexts/DownloadContext';
+import type { StatusItem } from '../contexts/DownloadContext';
 
 // --- TYPE DEFINITIONS ---
 interface FormatOption {
@@ -15,31 +15,11 @@ interface FormatOption {
   selector: string;
 }
 
-interface StatusItem {
-  id: number;
-  title: string;
-  status: 'downloading' | 'success' | 'error';
-  message: string;
-}
-
-interface DownloadPayload {
-  status: string;
-  message: string;
-}
-
-interface ActionProps {
-  onDownload: () => void;
-  isDownloading: boolean;
-  statuses: StatusItem[];
-}
-
 interface PlaylistEntry {
     id: string;
     title: string;
     thumbnail: string | null;
 }
-
-const SETTINGS_FILE = 'settings.json';
 
 // --- CONSTANTS ---
 const FORMAT_OPTIONS: FormatOption[] = [
@@ -69,13 +49,15 @@ const isPlaylistUrl = (url: string): boolean => {
 const DownloaderPage: React.FC = () => {
   const [url, setUrl] = useState('');
   const [selectedFormat, setSelectedFormat] = useState<FormatOption>(FORMAT_OPTIONS[1]);
-  const [statuses, setStatuses] = useState<StatusItem[]>([]);
-  const [isDownloading, setIsDownloading] = useState(false);
   const [needsConfig, setNeedsConfig] = useState(true);
 
   const [playlistEntries, setPlaylistEntries] = useState<PlaylistEntry[]>([]);
   const [selectedEntries, setSelectedEntries] = useState<Set<string>>(new Set());
   const [isFetchingPlaylist, setIsFetchingPlaylist] = useState(false);
+  const [hasTriedFetch, setHasTriedFetch] = useState(false);
+
+  // Use download context
+  const { statuses, isDownloading, setIsDownloading, addStatus } = useDownload();
 
   const isYoutube = useMemo(() => isYoutubeUrl(url), [url]);
   const isSpotify = useMemo(() => isSpotifyUrl(url), [url]);
@@ -91,43 +73,47 @@ const DownloaderPage: React.FC = () => {
     }
   }, [isSpotify]);
 
-  // Fetch playlist info when a valid playlist URL is entered
+  // Reset playlist state when URL changes
   useEffect(() => {
-      if (isPlaylist) {
-          const fetchPlaylist = async () => {
-              setIsFetchingPlaylist(true);
-              setPlaylistEntries([]);
-              setSelectedEntries(new Set());
-              try {
-                  const entries: PlaylistEntry[] = await invoke('get_playlist_info', { url });
-                  setPlaylistEntries(entries);
-              } catch (e) {
-                  console.error("Failed to fetch playlist info:", e);
-                  // --- DIAGNOSTIC ---
-                  // Show the error in the status list for visibility
-                  const newStatus: StatusItem = {
-                      id: Date.now(),
-                      title: "Failed to fetch playlist",
-                      status: 'error',
-                      message: String(e),
-                  };
-                  setStatuses(prev => [newStatus, ...prev]);
-              } finally {
-                  setIsFetchingPlaylist(false);
-              }
-          };
-          fetchPlaylist();
-      } else {
-          setPlaylistEntries([]);
-      }
-  }, [isPlaylist, url]);
+    if (isPlaylist) {
+      setPlaylistEntries([]);
+      setSelectedEntries(new Set());
+      setHasTriedFetch(false);
+    } else {
+      setPlaylistEntries([]);
+      setSelectedEntries(new Set());
+      setHasTriedFetch(false);
+    }
+  }, [url]);
 
-  // Re-check settings when the page is focused or statuses change
+  // Manual fetch playlist function
+  const fetchPlaylist = async () => {
+    if (!isPlaylist || !url.trim()) return;
+    
+    setIsFetchingPlaylist(true);
+    setPlaylistEntries([]);
+    setSelectedEntries(new Set());
+    setHasTriedFetch(true);
+    
+    try {
+        const entries: PlaylistEntry[] = await invoke('get_playlist_info', { url });
+        setPlaylistEntries(entries);
+    } catch (e) {
+        console.error("Failed to fetch playlist info:", e);
+        addStatus({
+            title: "Failed to fetch playlist",
+            status: 'error',
+            message: String(e),
+        });
+    } finally {
+        setIsFetchingPlaylist(false);
+    }
+  };
+
+  // Re-check settings when the page is focused
   useEffect(() => {
     const loadDownloadPath = async () => {
         try {
-            // No need to load path here, backend will do it.
-            // We just need to know if it's configured.
             await invoke('load_settings');
             setNeedsConfig(false);
         } catch(e) {
@@ -135,17 +121,6 @@ const DownloaderPage: React.FC = () => {
         }
     };
     loadDownloadPath();
-
-    const unlisten = listen<DownloadPayload>('DOWNLOAD_STATUS', (event) => {
-      const { status, message } = event.payload;
-      setStatuses(prev => prev.map(s => 
-        s.status === 'downloading' ? { ...s, status: status as any, message } : s
-      ));
-      if (status !== 'downloading') {
-        setIsDownloading(false);
-      }
-    });
-    return () => { unlisten.then((unlistenFn) => unlistenFn()); };
   }, [statuses]);
 
   const handleDownload = useCallback(async () => {
@@ -165,29 +140,25 @@ const DownloaderPage: React.FC = () => {
         if (!url.trim()) return;
         
         setIsDownloading(true);
-        const newStatusId = Date.now();
 
-        setStatuses(prev => [{
-            id: newStatusId,
+        // Add initial status for fetching title
+        addStatus({
             title: "Fetching title...",
             status: 'downloading',
             message: `Getting title for ${url}`,
-        }, ...prev]);
+        });
 
         try {
             // Step 1: Get the actual title from the backend
             const title = await invoke<string>('get_media_title', { url });
-
-            // Step 2: Update status with real title and prepare for download
-            setStatuses(prev => prev.map(s => 
-                s.id === newStatusId ? { ...s, title, message: 'Preparing to download...' } : s
-            ));
             itemsToDownload = [{ url, title }];
 
         } catch (error) {
-            setStatuses(prev => prev.map(s => 
-                s.id === newStatusId ? { ...s, status: 'error', message: `Failed to get title: ${String(error)}` } : s
-            ));
+            addStatus({
+                title: "Error",
+                status: 'error',
+                message: `Failed to get title: ${String(error)}`,
+            });
             setIsDownloading(false);
             return;
         }
@@ -195,45 +166,29 @@ const DownloaderPage: React.FC = () => {
     
     // This part now handles both single and playlist downloads
     for (const item of itemsToDownload) {
-        // If it's a single download, the status is already set. For playlists, we create it now.
-        if (!isPlaylist) {
-            // The download logic for single items is now here
-            const qualitySelector = isYoutube || isSpotify
-                ? selectedFormat.selector
-                : "best[ext=mp4]/best";
-            try {
-                await invoke('download_media', {
-                    url: item.url,
-                    quality: qualitySelector,
-                    formatType: selectedFormat.type
-                });
-            } catch (error) {
-                setStatuses(prev => prev.map(s => 
-                    s.title === item.title && s.status === 'downloading' ? { ...s, status: 'error', message: String(error) } : s
-                ));
-            }
-        } else {
-            // Playlist logic remains similar
-            const newStatus: StatusItem = {
-                id: Date.now() + Math.random(),
-                title: item.title,
-                status: 'downloading',
-                message: 'Preparing to download...',
-            };
-            setStatuses(prev => [newStatus, ...prev]);
+        // Add download status for each item
+        addStatus({
+            title: item.title,
+            status: 'downloading',
+            message: 'Preparing to download...',
+        });
 
-            const qualitySelector = selectedFormat.selector;
-            try {
-                await invoke('download_media', {
-                    url: item.url,
-                    quality: qualitySelector,
-                    formatType: selectedFormat.type
-                });
-            } catch (error) {
-                setStatuses(prev => prev.map(s => 
-                    s.id === newStatus.id ? { ...s, status: 'error', message: String(error) } : s
-                ));
-            }
+        const qualitySelector = isYoutube || isSpotify
+            ? selectedFormat.selector
+            : "best[ext=mp4]/best";
+            
+        try {
+            await invoke('download_media', {
+                url: item.url,
+                quality: qualitySelector,
+                formatType: selectedFormat.type
+            });
+        } catch (error) {
+            addStatus({
+                title: item.title,
+                status: 'error',
+                message: String(error),
+            });
         }
     }
     // Let the event listener handle the final state change
@@ -318,14 +273,13 @@ const DownloaderPage: React.FC = () => {
                       <p className="text-sm text-gray-400">Choose your preferred format</p>
                   </div>
               </div>
-              {!isPlaylist ? (
-                  <FormatSelector selected={selectedFormat} onSelect={setSelectedFormat} />
-              ) : (
-                  <div className="flex items-center gap-3 p-4 rounded-xl bg-gray-500/10 border border-gray-500/20">
-                      <Info size={18} className="text-gray-400 flex-shrink-0" />
+              <FormatSelector selected={selectedFormat} onSelect={setSelectedFormat} />
+              {isPlaylist && (
+                  <div className="flex items-center gap-3 p-4 mt-4 rounded-xl bg-blue-500/10 border border-blue-500/20">
+                      <Info size={18} className="text-blue-400 flex-shrink-0" />
                       <div>
-                          <p className="text-sm font-medium text-gray-300">
-                            Select videos from the playlist below and then click "Download Selected".
+                          <p className="text-sm font-medium text-blue-300">
+                            The selected format will be applied to all downloaded videos from the playlist.
                           </p>
                       </div>
                   </div>
@@ -333,14 +287,50 @@ const DownloaderPage: React.FC = () => {
           </div>
 
           {isPlaylist ? (
-              <PlaylistView
-                  entries={playlistEntries}
-                  selectedEntries={selectedEntries}
-                  setSelectedEntries={setSelectedEntries}
-                  isFetching={isFetchingPlaylist}
-                  onDownload={handleDownload}
-                  isDownloading={isDownloading}
-              />
+              <div className="space-y-6">
+                {!hasTriedFetch ? (
+                  <div className="p-6 rounded-2xl bg-white/5 border border-white/5 text-center">
+                    <div className="flex flex-col items-center gap-4">
+                      <div className="p-3 rounded-full bg-blue-500/10">
+                        <ListVideo size={24} className="text-blue-400" />
+                      </div>
+                      <div>
+                        <h3 className="font-medium text-white mb-2">Playlist Detected</h3>
+                        <p className="text-sm text-gray-400 mb-4">
+                          Click the button below to fetch playlist videos
+                        </p>
+                      </div>
+                      <button
+                        onClick={fetchPlaylist}
+                        disabled={isFetchingPlaylist}
+                        className="px-6 py-3 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-700 disabled:cursor-not-allowed text-white font-medium rounded-xl flex items-center gap-2 transition-colors"
+                      >
+                        {isFetchingPlaylist ? (
+                          <>
+                            <Loader size={18} className="animate-spin" />
+                            <span>Fetching Playlist...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Download size={18} />
+                            <span>Fetch Playlist</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <PlaylistView
+                      entries={playlistEntries}
+                      selectedEntries={selectedEntries}
+                      setSelectedEntries={setSelectedEntries}
+                      isFetching={isFetchingPlaylist}
+                      onDownload={handleDownload}
+                      isDownloading={isDownloading}
+                      onRefetch={fetchPlaylist}
+                  />
+                )}
+              </div>
           ) : (
               <button
                 onClick={handleDownload}
@@ -401,9 +391,10 @@ interface PlaylistViewProps {
     isFetching: boolean;
     onDownload: () => void;
     isDownloading: boolean;
+    onRefetch: () => void;
 }
 
-const PlaylistView: React.FC<PlaylistViewProps> = ({ entries, selectedEntries, setSelectedEntries, isFetching, onDownload, isDownloading }) => {
+const PlaylistView: React.FC<PlaylistViewProps> = ({ entries, selectedEntries, setSelectedEntries, isFetching, onDownload, isDownloading, onRefetch }) => {
     
     const handleSelectAll = () => {
         if (selectedEntries.size === entries.length) {
@@ -445,6 +436,15 @@ const PlaylistView: React.FC<PlaylistViewProps> = ({ entries, selectedEntries, s
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
+                    <button 
+                        onClick={onRefetch}
+                        disabled={isFetching}
+                        className="px-3 py-1 text-xs font-medium rounded-md bg-gray-600 hover:bg-gray-500 disabled:bg-gray-700 text-white flex items-center gap-1"
+                        title="Refresh playlist"
+                    >
+                        <Activity size={12} className={isFetching ? "animate-spin" : ""} />
+                        Refresh
+                    </button>
                     <button onClick={handleSelectAll} className="px-3 py-1 text-xs font-medium rounded-md bg-white/10 hover:bg-white/20 transition-colors">
                         {selectedEntries.size === entries.length ? 'Deselect All' : 'Select All'}
                     </button>
@@ -488,77 +488,6 @@ const PlaylistView: React.FC<PlaylistViewProps> = ({ entries, selectedEntries, s
     );
 };
 
-
-// --- CHILD COMPONENTS ---
-interface MediaInputProps {
-  url: string;
-  setUrl: (url: string) => void;
-  selectedFormat: FormatOption;
-  setSelectedFormat: (format: FormatOption) => void;
-}
-const MediaInputSection: React.FC<MediaInputProps> = ({ url, setUrl, selectedFormat, setSelectedFormat }) => (
-  <div className="space-y-6">
-      <div>
-      <label htmlFor="media-url" className="block text-sm font-medium text-gray-300 mb-2">MEDIA URL</label>
-      <div className="relative">
-        <input
-          id="media-url"
-          type="text"
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          className="w-full bg-gray-800/50 border border-gray-700 rounded-xl px-4 py-3 pr-10 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all placeholder:text-gray-500"
-          placeholder="Paste YouTube URL here..."
-        />
-        {url && (
-          <button
-            onClick={() => setUrl("")}
-            className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-white transition-colors"
-          >
-            <Trash2 size={18} />
-          </button>
-        )}
-        </div>
-      </div>
-      <div>
-      <label className="block text-sm font-medium text-gray-300 mb-2">OUTPUT FORMAT</label>
-        <FormatSelector selected={selectedFormat} onSelect={setSelectedFormat} />
-      </div>
-    </div>
-);
-
-const ActionSection: React.FC<ActionProps> = ({ onDownload, isDownloading, statuses }) => (
-  <div className="space-y-6">
-    <div>
-      <h3 className="text-sm font-medium text-gray-300 mb-2">ACTION</h3>
-      <button
-        onClick={onDownload}
-        disabled={isDownloading}
-        className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 disabled:from-blue-800 disabled:to-blue-900 disabled:cursor-not-allowed text-white font-semibold py-4 px-6 rounded-xl flex items-center justify-center gap-3 transition-all duration-200 shadow-lg shadow-blue-500/20"
-      >
-        {isDownloading ? (
-          <Loader className="animate-spin" size={20} />
-        ) : (
-          <Download size={20} />
-        )}
-        <span>{isDownloading ? "Downloading..." : "Download"}</span>
-      </button>
-    </div>
-    <div>
-      <h3 className="text-sm font-medium text-gray-300 mb-2">DOWNLOAD STATUS</h3>
-      <div className="bg-gray-800/50 rounded-xl p-4 space-y-3 h-[300px] overflow-y-auto">
-        {statuses.length === 0 && (
-          <div className="flex flex-col items-center justify-center h-full text-gray-400">
-            <Download size={24} className="mb-2 opacity-50" />
-            <p>Download status will appear here</p>
-          </div>
-        )}
-        {statuses.map((status: StatusItem) => (
-          <StatusItemComponent key={status.id} {...status} />
-        ))}
-      </div>
-      </div>
-    </div>
-);
 
 // --- HELPER & UI COMPONENTS ---
 const FormatSelector: React.FC<{ selected: FormatOption; onSelect: (format: FormatOption) => void }> = ({

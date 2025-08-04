@@ -9,14 +9,16 @@ from urllib.parse import urlparse, parse_qs
 def get_playlist_info(playlist_url):
     """
     Fetches information about each video in a playlist.
-    Uses --flat-playlist for efficiency.
+    Uses a two-step approach: flat-playlist for basic info, then individual requests for thumbnails.
     """
     try:
+        # Step 1: Get basic info with flat-playlist (fast)
         command = [
             "yt-dlp",
             "--flat-playlist",
+            "--playlist-end", "50",  # Limit to first 50 videos to prevent huge playlists
             "-j", # Output JSON
-            playlist_url # Pass the ID directly
+            playlist_url
         ]
 
         # --- DIAGNOSTIC ---
@@ -25,14 +27,14 @@ def get_playlist_info(playlist_url):
         result = subprocess.run(command, check=False, capture_output=True, text=True, encoding='utf-8')
 
         # --- DIAGNOSTIC ---
-        # Always print stderr for debugging purposes, even on success.
         if result.stderr:
             print(f"DEBUG: yt-dlp stderr:\n{result.stderr}", file=sys.stderr)
 
         # Check for success AND non-empty output
         if result.returncode == 0 and result.stdout.strip():
-            # Success. Now we must parse the line-delimited JSON into a single, valid JSON array.
             entries = []
+            
+            # Parse flat playlist results
             for line in result.stdout.strip().split('\n'):
                 if line:
                     try:
@@ -40,13 +42,18 @@ def get_playlist_info(playlist_url):
                         video_id = data.get("id")
                         video_title = data.get("title")
 
-                        # We must have an ID and a title to consider the entry valid.
-                        # Thumbnail is optional.
                         if video_id and video_title:
+                            # For YouTube videos, we can construct thumbnail URL directly
+                            # This is much faster than individual yt-dlp calls
+                            thumbnail_url = None
+                            if "youtube.com" in playlist_url or "youtu.be" in playlist_url:
+                                # YouTube thumbnail URL pattern
+                                thumbnail_url = f"https://img.youtube.com/vi/{video_id}/mqdefault.jpg"
+                            
                             entries.append({
                                 "id": video_id,
                                 "title": video_title,
-                                "thumbnail": data.get("thumbnail"), # Can be null
+                                "thumbnail": thumbnail_url,
                             })
                     except json.JSONDecodeError as e:
                         print(f"FATAL PYTHON ERROR: Failed to parse a line of yt-dlp JSON output: {e}", file=sys.stderr)

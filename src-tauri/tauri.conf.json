@@ -41,7 +41,8 @@
         "icons/icon.ico"
       ],
       "resources": [
-        "../yt_downloader.py"
+        "../yt_downloader.py",
+        "../requirements.txt"
       ]
     },
     "security": {

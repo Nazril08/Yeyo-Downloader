@@ -22,9 +22,14 @@ Sebelum memulai, pastikan Anda telah menginstal prasyarat berikut:
 1.  **Node.js & npm**: [https://nodejs.org/](https://nodejs.org/)
 2.  **Rust & Cargo**: [https://www.rust-lang.org/tools/install](https://www.rust-lang.org/tools/install)
 3.  **Python**: [https://www.python.org/downloads/](https://www.python.org/downloads/)
-4.  **yt-dlp & ffmpeg**:
+4.  **yt-dlp, requests & ffmpeg**:
     ```bash
-    pip install yt-dlp
+    # Opsi 1: Install secara manual
+    pip install yt-dlp requests
+    
+    # Opsi 2: Install menggunakan requirements.txt
+    pip install -r requirements.txt
+    
     # Instal ffmpeg menggunakan package manager pilihan Anda (misalnya, Chocolatey, Homebrew, apt)
     # Chocolatey: choco install ffmpeg
     # Homebrew: brew install ffmpeg

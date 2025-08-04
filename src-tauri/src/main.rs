@@ -36,23 +36,36 @@ async fn get_playlist_info(app_handle: tauri::AppHandle, url: String) -> Result<
         }
     };
 
-    let output = Command::new("python")
-        .arg(&python_script_path)
-        .arg("get-playlist-info")
-        .arg(&url)
-        .output()
-        .map_err(|e| format!("Failed to execute python script: {}", e))?;
-
-    if output.status.success() {
-        let stdout = String::from_utf8(output.stdout)
-            .map_err(|e| format!("Failed to read stdout from python script: {}", e))?;
-        serde_json::from_str(&stdout)
-            .map_err(|e| format!("Failed to parse playlist JSON: {}", e))
-    } else {
-        let stderr = String::from_utf8(output.stderr)
-            .map_err(|e| format!("Failed to read stderr from python script: {}", e))?;
-        Err(format!("Python script failed: {}", stderr))
+    // Try multiple Python commands in order of preference
+    let python_commands = ["python", "python3", "py"];
+    let mut last_error = String::new();
+    
+    for python_cmd in python_commands.iter() {
+        match Command::new(python_cmd)
+            .arg(&python_script_path)
+            .arg("get-playlist-info")
+            .arg(&url)
+            .output()
+        {
+            Ok(output) => {
+                if output.status.success() {
+                    let stdout = String::from_utf8(output.stdout)
+                        .map_err(|e| format!("Failed to read stdout from python script: {}", e))?;
+                    return serde_json::from_str(&stdout)
+                        .map_err(|e| format!("Failed to parse playlist JSON: {}", e));
+                } else {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    last_error = format!("Python script failed with {}: {}", python_cmd, stderr);
+                }
+            }
+            Err(e) => {
+                last_error = format!("Failed to execute {} command: {}", python_cmd, e);
+                continue;
+            }
+        }
     }
+    
+    Err(format!("All Python commands failed. Last error: {}. Please ensure Python is installed and yt-dlp is available.", last_error))
 }
 
 
@@ -151,24 +164,37 @@ async fn get_media_title(app_handle: tauri::AppHandle, url: String) -> Result<St
         }
     };
 
-    let output = Command::new("python")
-        .arg(&python_script_path)
-        .arg("get-title")
-        .arg(&url)
-        .output()
-        .map_err(|e| format!("Failed to execute python script for get-title: {}", e))?;
-
-    if output.status.success() {
-        let filename = String::from_utf8(output.stdout)
-            .map_err(|e| format!("Failed to read stdout from get-title script: {}", e))?
-            .trim()
-            .to_string();
-        Ok(filename)
-    } else {
-        let stderr = String::from_utf8(output.stderr)
-            .map_err(|e| format!("Failed to read stderr from get-title script: {}", e))?;
-        Err(format!("Python script (get-title) failed: {}", stderr))
+    // Try multiple Python commands in order of preference
+    let python_commands = ["python", "python3", "py"];
+    let mut last_error = String::new();
+    
+    for python_cmd in python_commands.iter() {
+        match Command::new(python_cmd)
+            .arg(&python_script_path)
+            .arg("get-title")
+            .arg(&url)
+            .output()
+        {
+            Ok(output) => {
+                if output.status.success() {
+                    let filename = String::from_utf8(output.stdout)
+                        .map_err(|e| format!("Failed to read stdout from get-title script: {}", e))?
+                        .trim()
+                        .to_string();
+                    return Ok(filename);
+                } else {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    last_error = format!("Python script (get-title) failed with {}: {}", python_cmd, stderr);
+                }
+            }
+            Err(e) => {
+                last_error = format!("Failed to execute {} command for get-title: {}", python_cmd, e);
+                continue;
+            }
+        }
     }
+    
+    Err(format!("All Python commands failed for get-title. Last error: {}. Please ensure Python is installed and yt-dlp is available.", last_error))
 }
 
 
@@ -212,42 +238,48 @@ async fn download_media(
         message: "Starting download...".into(),
     }).map_err(|e| e.to_string())?;
 
-    let output = Command::new("python")
-        .arg(&python_script_str)
-        .arg("download")
-        .arg(&url)
-        .arg(&quality)
-        .arg(&format_type)
-        .arg(&download_path)
-        .output();
+    // Try multiple Python commands in order of preference
+    let python_commands = ["python", "python3", "py"];
+    let mut last_error = String::new();
+    
+    for python_cmd in python_commands.iter() {
+        let output = Command::new(python_cmd)
+            .arg(&python_script_str)
+            .arg("download")
+            .arg(&url)
+            .arg(&quality)
+            .arg(&format_type)
+            .arg(&download_path)
+            .output();
 
-    match output {
-        Ok(output) => {
-            if output.status.success() {
-                let success_message = String::from_utf8_lossy(&output.stdout).to_string();
-                window.emit("DOWNLOAD_STATUS", &DownloadPayload {
-                    status: "success".into(),
-                    message: success_message,
-                }).map_err(|e| e.to_string())?;
-                Ok(())
-            } else {
-                let error_message = String::from_utf8_lossy(&output.stderr).to_string();
-                 window.emit("DOWNLOAD_STATUS", &DownloadPayload {
-                    status: "error".into(),
-                    message: error_message.clone(),
-                }).map_err(|e| e.to_string())?;
-                Err(error_message)
+        match output {
+            Ok(output) => {
+                if output.status.success() {
+                    let success_message = String::from_utf8_lossy(&output.stdout).to_string();
+                    window.emit("DOWNLOAD_STATUS", &DownloadPayload {
+                        status: "success".into(),
+                        message: success_message,
+                    }).map_err(|e| e.to_string())?;
+                    return Ok(());
+                } else {
+                    let error_message = String::from_utf8_lossy(&output.stderr).to_string();
+                    last_error = format!("Python script failed with {}: {}", python_cmd, error_message);
+                }
+            }
+            Err(e) => {
+                last_error = format!("Failed to execute {} command: {}", python_cmd, e);
+                continue;
             }
         }
-        Err(e) => {
-            let error_message = format!("Failed to start python process: {}. Ensure python is installed and in your PATH.", e);
-            window.emit("DOWNLOAD_STATUS", &DownloadPayload {
-                status: "error".into(),
-                message: error_message.clone(),
-            }).map_err(|e| e.to_string())?;
-            Err(error_message)
-        }
     }
+    
+    // If all commands failed, emit error and return
+    let final_error = format!("All Python commands failed. Last error: {}. Please ensure Python is installed and yt-dlp is available.", last_error);
+    window.emit("DOWNLOAD_STATUS", &DownloadPayload {
+        status: "error".into(),
+        message: final_error.clone(),
+    }).map_err(|e| e.to_string())?;
+    Err(final_error)
 }
 
 fn main() {
