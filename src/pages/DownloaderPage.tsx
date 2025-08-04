@@ -26,8 +26,8 @@ const FORMAT_OPTIONS: FormatOption[] = [
     { id: '1080p', label: '1080p MP4', quality: 'High quality video', type: 'video', icon: Video, selector: "bestvideo[height<=1080][vcodec^=avc]+bestaudio[acodec^=mp4a]/best[height<=1080][vcodec^=avc]" },
     { id: '720p', label: '720p MP4', quality: 'Standard quality video', type: 'video', icon: Video, selector: "bestvideo[height<=720][vcodec^=avc]+bestaudio[acodec^=mp4a]/best[height<=720][vcodec^=avc]" },
     { id: '480p', label: '480p MP4', quality: 'Low quality video', type: 'video', icon: Video, selector: "bestvideo[height<=480][vcodec^=avc]+bestaudio[acodec^=mp4a]/best[height<=480][vcodec^=avc]" },
-    { id: 'mp3_320', label: 'MP3 320kbps', quality: 'High quality audio', type: 'audio', icon: Music, selector: "bestaudio[acodec=mp3]/bestaudio" },
-    { id: 'mp3_128', label: 'MP3 128kbps', quality: 'Standard quality audio', type: 'audio', icon: Music, selector: "bestaudio[acodec=mp3][abr<=128]/bestaudio" },
+    { id: 'mp3_320', label: 'MP3 320kbps', quality: 'High quality audio', type: 'audio', icon: Music, selector: "bestaudio" },
+    { id: 'mp3_128', label: 'MP3 128kbps', quality: 'Standard quality audio', type: 'audio', icon: Music, selector: "bestaudio[abr<=128]/bestaudio" },
 ];
 
 // --- Helper Function ---

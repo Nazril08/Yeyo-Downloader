@@ -29,10 +29,20 @@ Sebelum memulai, pastikan Anda telah menginstal prasyarat berikut:
     
     # Opsi 2: Install menggunakan requirements.txt
     pip install -r requirements.txt
+    ```
+
+5.  **FFmpeg** (PENTING untuk konversi audio MP3):
+    ```bash
+    # Windows (pilih salah satu):
+    # - Otomatis: jalankan install_ffmpeg.bat (disediakan)
+    # - Manual: winget install Gyan.FFmpeg
+    # - Chocolatey: choco install ffmpeg
     
-    # Instal ffmpeg menggunakan package manager pilihan Anda (misalnya, Chocolatey, Homebrew, apt)
-    # Chocolatey: choco install ffmpeg
-    # Homebrew: brew install ffmpeg
+    # macOS:
+    brew install ffmpeg
+    
+    # Linux (Ubuntu/Debian):
+    sudo apt install ffmpeg
     ```
 
 ### Menjalankan di Mode Development

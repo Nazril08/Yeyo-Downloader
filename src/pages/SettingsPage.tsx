@@ -1,14 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/tauri';
 import { open } from '@tauri-apps/api/dialog';
-import { Folder, Save, Settings as SettingsIcon, HardDrive, Info, CheckCircle, XCircle } from 'lucide-react';
+import { Folder, Save, Settings as SettingsIcon, HardDrive, Info, CheckCircle, XCircle, Image } from 'lucide-react';
 
 interface Settings {
     download_path: string;
+    enable_thumbnails: boolean;
 }
 
 const SettingsPage: React.FC = () => {
     const [downloadPath, setDownloadPath] = useState<string>('');
+    const [enableThumbnails, setEnableThumbnails] = useState<boolean>(true);
     const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
     useEffect(() => {
@@ -16,6 +18,7 @@ const SettingsPage: React.FC = () => {
             try {
                 const settings: Settings = await invoke('load_settings');
                 setDownloadPath(settings.download_path);
+                setEnableThumbnails(settings.enable_thumbnails);
             } catch (e) {
                 setMessage({ type: 'error', text: `Failed to load settings: ${e}` });
             }
@@ -36,7 +39,12 @@ const SettingsPage: React.FC = () => {
 
     const handleSaveChanges = async () => {
         try {
-            await invoke('save_settings', { settings: { download_path: downloadPath } });
+            await invoke('save_settings', { 
+                settings: { 
+                    download_path: downloadPath,
+                    enable_thumbnails: enableThumbnails
+                } 
+            });
             setMessage({ type: 'success', text: 'Settings saved successfully!' });
             setTimeout(() => setMessage(null), 3000);
         } catch(e) {
@@ -90,6 +98,32 @@ const SettingsPage: React.FC = () => {
                         </button>
                     </div>
                 </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-300 mb-3">
+                                    PLAYLIST THUMBNAILS
+                                </label>
+                                <div className="flex items-center justify-between p-4 bg-white/5 border border-white/10 rounded-xl">
+                                    <div>
+                                        <h4 className="text-white font-medium">Enable High-Quality Thumbnails</h4>
+                                        <p className="text-sm text-gray-400 mt-1">
+                                            Fetch high-quality thumbnails for playlist videos. Disabling this will speed up playlist loading but show default thumbnails.
+                                        </p>
+                                    </div>
+                                    <button
+                                        onClick={() => setEnableThumbnails(!enableThumbnails)}
+                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                                            enableThumbnails ? 'bg-purple-500' : 'bg-gray-600'
+                                        }`}
+                                    >
+                                        <span
+                                            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                                enableThumbnails ? 'translate-x-6' : 'translate-x-1'
+                                            }`}
+                                        />
+                                    </button>
+                                </div>
+                            </div>
 
                             <div className="flex items-center justify-between pt-4">
                                 <button

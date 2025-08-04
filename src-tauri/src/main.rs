@@ -20,6 +20,9 @@ struct PlaylistEntry {
 
 #[tauri::command]
 async fn get_playlist_info(app_handle: tauri::AppHandle, url: String) -> Result<Vec<PlaylistEntry>, String> {
+    // Load settings to check thumbnail preference
+    let settings = load_settings(app_handle.clone()).await?;
+    
     let python_script_path = {
         #[cfg(not(debug_assertions))]
         {
@@ -41,12 +44,17 @@ async fn get_playlist_info(app_handle: tauri::AppHandle, url: String) -> Result<
     let mut last_error = String::new();
     
     for python_cmd in python_commands.iter() {
-        match Command::new(python_cmd)
-            .arg(&python_script_path)
+        let mut command = Command::new(python_cmd);
+        command.arg(&python_script_path)
             .arg("get-playlist-info")
-            .arg(&url)
-            .output()
-        {
+            .arg(&url);
+        
+        // Add thumbnail parameter
+        if settings.enable_thumbnails {
+            command.arg("--enable-thumbnails");
+        }
+        
+        match command.output() {
             Ok(output) => {
                 if output.status.success() {
                     let stdout = String::from_utf8(output.stdout)
@@ -76,6 +84,12 @@ async fn get_playlist_info(app_handle: tauri::AppHandle, url: String) -> Result<
 #[derive(Serialize, Deserialize, Clone)]
 struct Settings {
     download_path: String,
+    #[serde(default = "default_enable_thumbnails")]
+    enable_thumbnails: bool,
+}
+
+fn default_enable_thumbnails() -> bool {
+    true
 }
 
 /// A helper function to get the OS-specific path to our settings directory.
@@ -108,6 +122,7 @@ async fn load_settings(app_handle: tauri::AppHandle) -> Result<Settings, String>
 
         let default_settings = Settings {
             download_path: default_path,
+            enable_thumbnails: true, // Default to enabled
         };
         // We use the save_settings command to ensure the directory is created correctly.
         save_settings(app_handle, default_settings.clone()).await?;

@@ -6,10 +6,14 @@ import requests  # Import requests
 import os  # Import the os module
 from urllib.parse import urlparse, parse_qs
 
-def get_playlist_info(playlist_url):
+def get_playlist_info(playlist_url, enable_thumbnails=True):
     """
     Fetches information about each video in a playlist.
     Uses a two-step approach: flat-playlist for basic info, then individual requests for thumbnails.
+    
+    Args:
+        playlist_url: URL of the playlist
+        enable_thumbnails: Whether to fetch thumbnails (can be slow for large playlists)
     """
     try:
         # Step 1: Get basic info with flat-playlist (fast)
@@ -18,7 +22,7 @@ def get_playlist_info(playlist_url):
             "--flat-playlist",
             "--playlist-end", "50",  # Limit to first 50 videos to prevent huge playlists
             "-j", # Output JSON
-            playlist_url
+            playlist_url # Pass the ID directly
         ]
 
         # --- DIAGNOSTIC ---
@@ -27,14 +31,16 @@ def get_playlist_info(playlist_url):
         result = subprocess.run(command, check=False, capture_output=True, text=True, encoding='utf-8')
 
         # --- DIAGNOSTIC ---
+        # Always print stderr for debugging purposes, even on success.
         if result.stderr:
             print(f"DEBUG: yt-dlp stderr:\n{result.stderr}", file=sys.stderr)
 
         # Check for success AND non-empty output
         if result.returncode == 0 and result.stdout.strip():
+            # Success. Now we must parse the line-delimited JSON into a single, valid JSON array.
             entries = []
+            video_ids = []
             
-            # Parse flat playlist results
             for line in result.stdout.strip().split('\n'):
                 if line:
                     try:
@@ -42,22 +48,51 @@ def get_playlist_info(playlist_url):
                         video_id = data.get("id")
                         video_title = data.get("title")
 
+                        # We must have an ID and a title to consider the entry valid.
                         if video_id and video_title:
-                            # For YouTube videos, we can construct thumbnail URL directly
-                            # This is much faster than individual yt-dlp calls
-                            thumbnail_url = None
-                            if "youtube.com" in playlist_url or "youtu.be" in playlist_url:
-                                # YouTube thumbnail URL pattern
-                                thumbnail_url = f"https://img.youtube.com/vi/{video_id}/mqdefault.jpg"
-                            
                             entries.append({
                                 "id": video_id,
                                 "title": video_title,
-                                "thumbnail": thumbnail_url,
+                                "thumbnail": None  # Will be filled in step 2
                             })
+                            video_ids.append(video_id)
                     except json.JSONDecodeError as e:
                         print(f"FATAL PYTHON ERROR: Failed to parse a line of yt-dlp JSON output: {e}", file=sys.stderr)
                         sys.exit(1)
+            
+            # Step 2: Get thumbnails for each video (batch process for efficiency)
+            if entries and enable_thumbnails:
+                print(f"DEBUG: Getting thumbnails for {len(entries)} videos...", file=sys.stderr)
+                for i, entry in enumerate(entries):
+                    try:
+                        video_url = f"https://www.youtube.com/watch?v={entry['id']}"
+                        thumb_command = [
+                            "yt-dlp",
+                            "--print", "thumbnail",
+                            "--no-playlist",
+                            video_url
+                        ]
+                        
+                        thumb_result = subprocess.run(thumb_command, capture_output=True, text=True, encoding='utf-8', timeout=10)
+                        if thumb_result.returncode == 0 and thumb_result.stdout.strip():
+                            # Use the first thumbnail URL (usually best quality)
+                            thumbnail_url = thumb_result.stdout.strip().split('\n')[0]
+                            entry["thumbnail"] = thumbnail_url
+                        else:
+                            # Fallback to YouTube default thumbnail
+                            entry["thumbnail"] = f"https://img.youtube.com/vi/{entry['id']}/mqdefault.jpg"
+                    except subprocess.TimeoutExpired:
+                        # Fallback to YouTube default thumbnail on timeout
+                        entry["thumbnail"] = f"https://img.youtube.com/vi/{entry['id']}/mqdefault.jpg"
+                        print(f"DEBUG: Timeout getting thumbnail for {entry['id']}, using default", file=sys.stderr)
+                    except Exception as e:
+                        # Fallback to YouTube default thumbnail on any error
+                        entry["thumbnail"] = f"https://img.youtube.com/vi/{entry['id']}/mqdefault.jpg"
+                        print(f"DEBUG: Error getting thumbnail for {entry['id']}: {e}", file=sys.stderr)
+            elif entries and not enable_thumbnails:
+                print(f"DEBUG: Thumbnails disabled, using default thumbnails for {len(entries)} videos...", file=sys.stderr)
+                for entry in entries:
+                    entry["thumbnail"] = f"https://img.youtube.com/vi/{entry['id']}/mqdefault.jpg"
             
             # Print the final list as a single JSON array string
             print(json.dumps(entries))
@@ -214,11 +249,13 @@ if __name__ == "__main__":
     action = sys.argv[1]
     
     if action == "get-playlist-info":
-        if len(sys.argv) == 3:
+        if len(sys.argv) >= 3:
             playlist_url = sys.argv[2]
-            get_playlist_info(playlist_url)
+            # Check for thumbnail flag
+            enable_thumbnails = "--enable-thumbnails" in sys.argv
+            get_playlist_info(playlist_url, enable_thumbnails)
         else:
-            print(f"Error: Invalid arguments for get-playlist-info. Expected <url>. Received: {sys.argv}", file=sys.stderr)
+            print(f"Error: Invalid arguments for get-playlist-info. Expected <url> [--enable-thumbnails]. Received: {sys.argv}", file=sys.stderr)
             sys.exit(1)
 
     elif action == "get-title":
