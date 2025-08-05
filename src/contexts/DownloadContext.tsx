@@ -10,6 +10,15 @@ export interface StatusItem {
   message: string;
 }
 
+export interface FormatOption {
+  id: string;
+  label: string;
+  quality: string;
+  type: 'video' | 'audio';
+  icon: React.ElementType;
+  selector: string;
+}
+
 interface DownloadPayload {
   status: string;
   message: string;
@@ -26,6 +35,25 @@ interface DownloadContextType {
   addStatus: (status: Omit<StatusItem, 'id'>) => void;
   clearStatuses: () => void;
   cancelDownload: () => void;
+  
+  // URL and analysis state
+  url: string;
+  setUrl: React.Dispatch<React.SetStateAction<string>>;
+  isYoutube: boolean;
+  isSpotify: boolean;
+  isPlaylist: boolean;
+  selectedFormat: FormatOption;
+  setSelectedFormat: React.Dispatch<React.SetStateAction<FormatOption>>;
+  
+  // Playlist state
+  playlistEntries: any[];
+  setPlaylistEntries: React.Dispatch<React.SetStateAction<any[]>>;
+  selectedEntries: Set<string>;
+  setSelectedEntries: React.Dispatch<React.SetStateAction<Set<string>>>;
+  hasTriedFetch: boolean;
+  setHasTriedFetch: React.Dispatch<React.SetStateAction<boolean>>;
+  isFetchingPlaylist: boolean;
+  setIsFetchingPlaylist: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
 const DownloadContext = createContext<DownloadContextType | undefined>(undefined);
@@ -46,6 +74,45 @@ export const DownloadProvider: React.FC<DownloadProviderProps> = ({ children }) 
   const [statuses, setStatuses] = useState<StatusItem[]>([]);
   const [isDownloading, setIsDownloading] = useState(false);
   const [currentDownloadId, setCurrentDownloadId] = useState<string | null>(null);
+  
+  // URL and analysis state
+  const [url, setUrl] = useState('');
+  const [selectedFormat, setSelectedFormat] = useState<FormatOption>({
+    id: '720p',
+    label: '720p MP4',
+    quality: 'Standard quality video',
+    type: 'video',
+    icon: () => null,
+    selector: "bestvideo[height<=720][vcodec^=avc]+bestaudio[acodec^=mp4a]/best[height<=720][vcodec^=avc]"
+  });
+  
+  // Playlist state
+  const [playlistEntries, setPlaylistEntries] = useState<any[]>([]);
+  const [selectedEntries, setSelectedEntries] = useState<Set<string>>(new Set());
+  const [hasTriedFetch, setHasTriedFetch] = useState(false);
+  const [isFetchingPlaylist, setIsFetchingPlaylist] = useState(false);
+
+  // URL analysis helpers
+  const isYoutube = (() => {
+    const youtubeRegex = /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/.+/;
+    return youtubeRegex.test(url);
+  })();
+
+  const isSpotify = (() => {
+    const spotifyRegex = /^(https?:\/\/)?(open\.)?spotify\.com\/.+/;
+    return spotifyRegex.test(url);
+  })();
+
+  const isPlaylist = (() => {
+    return url.includes("list=");
+  })();
+
+  // Reset playlist state when URL changes
+  React.useEffect(() => {
+    setHasTriedFetch(false);
+    setPlaylistEntries([]);
+    setSelectedEntries(new Set());
+  }, [url]);
 
   const addStatus = (status: Omit<StatusItem, 'id'>) => {
     const newStatus: StatusItem = {
@@ -115,6 +182,25 @@ export const DownloadProvider: React.FC<DownloadProviderProps> = ({ children }) 
     addStatus,
     clearStatuses,
     cancelDownload,
+    
+    // URL and analysis state
+    url,
+    setUrl,
+    isYoutube,
+    isSpotify,
+    isPlaylist,
+    selectedFormat,
+    setSelectedFormat,
+    
+    // Playlist state
+    playlistEntries,
+    setPlaylistEntries,
+    selectedEntries,
+    setSelectedEntries,
+    hasTriedFetch,
+    setHasTriedFetch,
+    isFetchingPlaylist,
+    setIsFetchingPlaylist,
   };
 
   return (

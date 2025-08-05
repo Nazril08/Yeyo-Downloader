@@ -1,5 +1,5 @@
 import { Download, Trash2, Video, Music, CheckCircle, XCircle, Loader, Link as LinkIcon, Settings, Activity, ChevronDown, Info, ListVideo } from 'lucide-react';
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/tauri';
 import { Link } from 'react-router-dom';
 import { useDownload } from '../contexts/DownloadContext';
@@ -30,38 +30,35 @@ const FORMAT_OPTIONS: FormatOption[] = [
     { id: 'mp3_128', label: 'MP3 128kbps', quality: 'Standard quality audio', type: 'audio', icon: Music, selector: "bestaudio[abr<=128]/bestaudio" },
 ];
 
-// --- Helper Function ---
-const isYoutubeUrl = (url: string): boolean => {
-    const youtubeRegex = /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/.+$/;
-    return youtubeRegex.test(url);
-};
-
-const isSpotifyUrl = (url: string): boolean => {
-    const spotifyRegex = /^(https?:\/\/)?(open\.)?spotify\.com\/.+$/;
-    return spotifyRegex.test(url);
-}
-
-const isPlaylistUrl = (url: string): boolean => {
-    return url.includes("list=");
-}
-
 // --- MAIN DOWNLOADER PAGE COMPONENT ---
 const DownloaderPage: React.FC = () => {
-  const [url, setUrl] = useState('');
-  const [selectedFormat, setSelectedFormat] = useState<FormatOption>(FORMAT_OPTIONS[1]);
+  // Use download context for all state
+  const { 
+    statuses, 
+    isDownloading, 
+    setIsDownloading, 
+    addStatus, 
+    currentDownloadId, 
+    cancelDownload,
+    url,
+    setUrl,
+    isYoutube,
+    isSpotify,
+    isPlaylist,
+    selectedFormat,
+    setSelectedFormat,
+    playlistEntries,
+    setPlaylistEntries,
+    selectedEntries,
+    setSelectedEntries,
+    hasTriedFetch,
+    setHasTriedFetch,
+    isFetchingPlaylist,
+    setIsFetchingPlaylist
+  } = useDownload();
+
+  // Local state only
   const [needsConfig, setNeedsConfig] = useState(true);
-
-  const [playlistEntries, setPlaylistEntries] = useState<PlaylistEntry[]>([]);
-  const [selectedEntries, setSelectedEntries] = useState<Set<string>>(new Set());
-  const [isFetchingPlaylist, setIsFetchingPlaylist] = useState(false);
-  const [hasTriedFetch, setHasTriedFetch] = useState(false);
-
-  // Use download context
-  const { statuses, isDownloading, setIsDownloading, addStatus, currentDownloadId, cancelDownload } = useDownload();
-
-  const isYoutube = useMemo(() => isYoutubeUrl(url), [url]);
-  const isSpotify = useMemo(() => isSpotifyUrl(url), [url]);
-  const isPlaylist = useMemo(() => isYoutube && isPlaylistUrl(url), [url, isYoutube]);
 
   // Automatically switch format for Spotify links
   useEffect(() => {
@@ -71,7 +68,7 @@ const DownloaderPage: React.FC = () => {
         setSelectedFormat(mp3Format);
       }
     }
-  }, [isSpotify]);
+  }, [isSpotify, setSelectedFormat]);
 
   // Reset playlist state when URL changes
   useEffect(() => {
@@ -197,21 +194,18 @@ const DownloaderPage: React.FC = () => {
 
   return (
     <div className="space-y-8">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-2xl font-semibold text-white">Media Downloader</h1>
-          <p className="text-gray-400 mt-1">Download videos and music from YouTube</p>
+          <h1 className="text-2xl font-semibold text-white">Yeyo Downloader</h1>
         </div>
         <div className="flex items-center gap-3">
-          <a
-            href="https://github.com/your-repo"
-            target="_blank"
-            rel="noopener noreferrer"
+          <Link
+            to="/settings"
             className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors text-sm text-gray-300"
           >
-            <LinkIcon size={16} />
-            <span>Documentation</span>
-          </a>
+            <Settings size={16} />
+            <span>Settings</span>
+          </Link>
         </div>
       </div>
 
@@ -233,166 +227,271 @@ const DownloaderPage: React.FC = () => {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="flex flex-col gap-6">
-          <div className="p-6 rounded-2xl bg-white/5 border border-white/5">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="p-2 rounded-lg bg-blue-500/10">
-                <LinkIcon size={20} className="text-blue-400" />
+      {/* Main Download Interface */}
+      <div className="max-w-7xl mx-auto">
+        {/* URL Input Section */}
+        <div className="relative mb-6">
+          <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-purple-500/10 rounded-3xl blur-xl"></div>
+          <div className="relative p-6 rounded-3xl bg-white/5 backdrop-blur-sm border border-white/10">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600">
+                <LinkIcon size={20} className="text-white" />
               </div>
               <div>
-                <h2 className="font-medium text-white">Media URL</h2>
-                <p className="text-sm text-gray-400">Enter the YouTube video URL</p>
+                <h2 className="text-lg font-semibold text-white">Paste your link</h2>
+                <p className="text-sm text-gray-400">Support for YouTube, Spotify, and other platforms</p>
               </div>
             </div>
+            
             <div className="relative">
               <input
                 type="text"
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
-                placeholder="https://youtube.com/watch?v=..."
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 pr-10 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500/30 transition-all"
+                placeholder="https://youtube.com/watch?v=... or https://open.spotify.com/..."
+                className="w-full h-12 bg-black/20 border border-white/20 rounded-xl px-4 pr-12 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all"
               />
               {url && (
                 <button
                   onClick={() => setUrl("")}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition-colors"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-lg bg-white/10 hover:bg-white/20 text-gray-400 hover:text-white transition-all"
                 >
-                  <Trash2 size={18} />
+                  <Trash2 size={16} />
                 </button>
               )}
             </div>
           </div>
-
-          <div className="p-6 rounded-2xl bg-white/5 border border-white/5">
-              <div className="flex items-center gap-3 mb-6">
-                  <div className="p-2 rounded-lg bg-purple-500/10">
-                      <Video size={20} className="text-purple-400" />
-                  </div>
-                  <div>
-                      <h2 className="font-medium text-white">Output Format</h2>
-                      <p className="text-sm text-gray-400">Choose your preferred format</p>
-                  </div>
-              </div>
-              <FormatSelector selected={selectedFormat} onSelect={setSelectedFormat} />
-              {isPlaylist && (
-                  <div className="flex items-center gap-3 p-4 mt-4 rounded-xl bg-blue-500/10 border border-blue-500/20">
-                      <Info size={18} className="text-blue-400 flex-shrink-0" />
-                      <div>
-                          <p className="text-sm font-medium text-blue-300">
-                            The selected format will be applied to all downloaded videos from the playlist.
-                          </p>
-                      </div>
-                  </div>
-              )}
-          </div>
-
-          {isPlaylist ? (
-              <div className="space-y-6">
-                {!hasTriedFetch ? (
-                  <div className="p-6 rounded-2xl bg-white/5 border border-white/5 text-center">
-                    <div className="flex flex-col items-center gap-4">
-                      <div className="p-3 rounded-full bg-blue-500/10">
-                        <ListVideo size={24} className="text-blue-400" />
-                      </div>
-                      <div>
-                        <h3 className="font-medium text-white mb-2">Playlist Detected</h3>
-                        <p className="text-sm text-gray-400 mb-4">
-                          Click the button below to fetch playlist videos
-                        </p>
-                      </div>
-                      <button
-                        onClick={fetchPlaylist}
-                        disabled={isFetchingPlaylist}
-                        className="px-6 py-3 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-700 disabled:cursor-not-allowed text-white font-medium rounded-xl flex items-center gap-2 transition-colors"
-                      >
-                        {isFetchingPlaylist ? (
-                          <>
-                            <Loader size={18} className="animate-spin" />
-                            <span>Fetching Playlist...</span>
-                          </>
-                        ) : (
-                          <>
-                            <Download size={18} />
-                            <span>Fetch Playlist</span>
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <PlaylistView
-                      entries={playlistEntries}
-                      selectedEntries={selectedEntries}
-                      setSelectedEntries={setSelectedEntries}
-                      isFetching={isFetchingPlaylist}
-                      onDownload={handleDownload}
-                      isDownloading={isDownloading}
-                      onRefetch={fetchPlaylist}
-                      onCancelDownload={cancelDownload}
-                      currentDownloadId={currentDownloadId}
-                  />
-                )}
-              </div>
-          ) : (
-              <div className="flex gap-3">
-                <button
-                  onClick={handleDownload}
-                  disabled={isDownloading || !url.trim() || needsConfig}
-                  className="flex-1 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-700 disabled:cursor-not-allowed text-white font-medium h-12 px-6 rounded-xl flex items-center justify-center gap-2 transition-colors relative overflow-hidden group"
-                >
-                  <div className="absolute inset-0 bg-gradient-to-r from-blue-600 to-blue-400 opacity-0 group-hover:opacity-100 transition-opacity" />
-                  <div className="relative flex items-center gap-2">
-                    {isDownloading ? (
-                      <>
-                        <Loader size={18} className="animate-spin" />
-                        <span>Downloading...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Download size={18} />
-                        <span>Download Now</span>
-                      </>
-                    )}
-                  </div>
-                </button>
-                
-                {/* Cancel Button - only show when downloading */}
-                {isDownloading && currentDownloadId && (
-                  <button
-                    onClick={cancelDownload}
-                    className="bg-red-500 hover:bg-red-600 text-white font-medium h-12 px-4 rounded-xl flex items-center justify-center gap-2 transition-colors"
-                    title="Cancel Download"
-                  >
-                    <XCircle size={18} />
-                    <span>Cancel</span>
-                  </button>
-                )}
-              </div>
-          )}
         </div>
 
-        <div className="flex-1 p-6 rounded-2xl bg-white/5 border border-white/5 min-h-[300px]">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="p-2 rounded-lg bg-gray-500/10">
-              <Activity size={20} className="text-gray-400" />
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Left Column: Platform Detection & Format */}
+          <div className="space-y-6">
+            {/* Platform Detection Cards */}
+            <div className="grid grid-cols-3 gap-4">
+              <div className={`p-4 rounded-xl border transition-all ${
+                isYoutube 
+                  ? 'bg-red-500/10 border-red-500/30 ring-1 ring-red-500/20' 
+                  : 'bg-white/5 border-white/10'
+              }`}>
+                <div className="flex items-center gap-2 mb-2">
+                  <div className={`p-1.5 rounded-lg ${isYoutube ? 'bg-red-500/20' : 'bg-gray-500/20'}`}>
+                    <Video size={16} className={isYoutube ? 'text-red-400' : 'text-gray-400'} />
+                  </div>
+                  <span className="text-sm font-medium text-white">YouTube</span>
+                </div>
+                <div className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs ${
+                  isYoutube 
+                    ? 'bg-green-500/20 text-green-400' 
+                    : 'bg-gray-500/20 text-gray-500'
+                }`}>
+                  <div className={`w-1.5 h-1.5 rounded-full ${isYoutube ? 'bg-green-400' : 'bg-gray-500'}`}></div>
+                  {isYoutube ? 'Detected' : 'Not detected'}
+                </div>
+              </div>
+
+              <div className={`p-4 rounded-xl border transition-all ${
+                isPlaylist 
+                  ? 'bg-purple-500/10 border-purple-500/30 ring-1 ring-purple-500/20' 
+                  : 'bg-white/5 border-white/10'
+              }`}>
+                <div className="flex items-center gap-2 mb-2">
+                  <div className={`p-1.5 rounded-lg ${isPlaylist ? 'bg-purple-500/20' : 'bg-gray-500/20'}`}>
+                    <ListVideo size={16} className={isPlaylist ? 'text-purple-400' : 'text-gray-400'} />
+                  </div>
+                  <span className="text-sm font-medium text-white">Playlist</span>
+                </div>
+                <div className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs ${
+                  isPlaylist 
+                    ? 'bg-purple-500/20 text-purple-400' 
+                    : 'bg-gray-500/20 text-gray-500'
+                }`}>
+                  <div className={`w-1.5 h-1.5 rounded-full ${isPlaylist ? 'bg-purple-400' : 'bg-gray-500'}`}></div>
+                  {isPlaylist ? 'Detected' : 'Single video'}
+                </div>
+              </div>
+
+              <div className={`p-4 rounded-xl border transition-all ${
+                isSpotify 
+                  ? 'bg-green-500/10 border-green-500/30 ring-1 ring-green-500/20' 
+                  : 'bg-white/5 border-white/10'
+              }`}>
+                <div className="flex items-center gap-2 mb-2">
+                  <div className={`p-1.5 rounded-lg ${isSpotify ? 'bg-green-500/20' : 'bg-gray-500/20'}`}>
+                    <Music size={16} className={isSpotify ? 'text-green-400' : 'text-gray-400'} />
+                  </div>
+                  <span className="text-sm font-medium text-white">Spotify</span>
+                </div>
+                <div className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs ${
+                  isSpotify 
+                    ? 'bg-green-500/20 text-green-400' 
+                    : 'bg-gray-500/20 text-gray-500'
+                }`}>
+                  <div className={`w-1.5 h-1.5 rounded-full ${isSpotify ? 'bg-green-400' : 'bg-gray-500'}`}></div>
+                  {isSpotify ? 'Detected' : 'Not detected'}
+                </div>
+              </div>
             </div>
-            <div>
-              <h2 className="font-medium text-white">Download Status</h2>
-              <p className="text-sm text-gray-400">Track your downloads</p>
+
+            {/* Format Selection & Download Actions */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Format Selection */}
+              <div className="p-6 rounded-2xl bg-white/5 backdrop-blur-sm border border-white/10">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="p-2 rounded-xl bg-gradient-to-br from-orange-500 to-red-500">
+                    <Video size={18} className="text-white" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-white">Output Format</h3>
+                    <p className="text-xs text-gray-400">Choose quality and format</p>
+                  </div>
+                </div>
+                <FormatSelector selected={selectedFormat} onSelect={setSelectedFormat} />
+                {isPlaylist && url.trim() && (
+                  <div className="mt-3 p-3 rounded-lg bg-blue-500/10 border border-blue-500/20">
+                    <div className="flex items-start gap-2">
+                      <Info size={14} className="text-blue-400 mt-0.5 flex-shrink-0" />
+                      <p className="text-xs text-blue-300">
+                        Selected format will be applied to all playlist videos.
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Download Actions */}
+              <div className="p-6 rounded-2xl bg-white/5 backdrop-blur-sm border border-white/10">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="p-2 rounded-xl bg-gradient-to-br from-green-500 to-blue-500">
+                    <Download size={18} className="text-white" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-white">Download</h3>
+                    <p className="text-xs text-gray-400">Start downloading media</p>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  {url.trim() ? (
+                    <>
+                      {isPlaylist && !hasTriedFetch ? (
+                        <button
+                          onClick={fetchPlaylist}
+                          disabled={isFetchingPlaylist}
+                          className="w-full h-12 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 disabled:from-gray-600 disabled:to-gray-700 disabled:cursor-not-allowed text-white font-medium rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg hover:shadow-purple-500/25"
+                        >
+                          {isFetchingPlaylist ? (
+                            <>
+                              <Loader size={18} className="animate-spin" />
+                              <span>Analyzing...</span>
+                            </>
+                          ) : (
+                            <>
+                              <ListVideo size={18} />
+                              <span>Fetch Playlist</span>
+                            </>
+                          )}
+                        </button>
+                      ) : (
+                        <button
+                          onClick={handleDownload}
+                          disabled={isDownloading || !url.trim() || needsConfig}
+                          className="w-full h-12 bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 disabled:from-gray-600 disabled:to-gray-700 disabled:cursor-not-allowed text-white font-medium rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg hover:shadow-blue-500/25"
+                        >
+                          {isDownloading ? (
+                            <>
+                              <Loader size={18} className="animate-spin" />
+                              <span>Downloading...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Download size={18} />
+                              <span>Download Now</span>
+                            </>
+                          )}
+                        </button>
+                      )}
+                      
+                      {isDownloading && currentDownloadId && (
+                        <button
+                          onClick={cancelDownload}
+                          className="w-full h-10 bg-gradient-to-r from-red-500 to-pink-500 hover:from-red-600 hover:to-pink-600 text-white font-medium rounded-lg flex items-center justify-center gap-2 transition-all"
+                        >
+                          <XCircle size={16} />
+                          <span>Cancel</span>
+                        </button>
+                      )}
+                    </>
+                  ) : (
+                    <div className="text-center py-6">
+                      <div className="p-3 rounded-xl bg-white/5 mb-3 inline-block">
+                        <LinkIcon size={24} className="text-gray-400" />
+                      </div>
+                      <p className="text-sm text-gray-400 mb-1">Enter a URL to get started</p>
+                      <p className="text-xs text-gray-500">Paste a YouTube or Spotify link above</p>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
-          <div className="space-y-3">
-            {statuses.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-[200px] text-gray-400">
-                <Download size={24} className="mb-2 opacity-50" />
-                <p className="text-sm">No downloads yet</p>
+
+          {/* Right Column: Playlist & Download Status */}
+          <div className="space-y-6">
+            {/* Playlist Section */}
+            {isPlaylist && hasTriedFetch && url.trim() && (
+              <div className="p-6 rounded-2xl bg-white/5 backdrop-blur-sm border border-white/10">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="p-2 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500">
+                    <ListVideo size={18} className="text-white" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-white">Playlist Selection</h3>
+                    <p className="text-xs text-gray-400">Choose videos to download</p>
+                  </div>
+                </div>
+                
+                <PlaylistView
+                  entries={playlistEntries}
+                  selectedEntries={selectedEntries}
+                  setSelectedEntries={setSelectedEntries}
+                  isFetching={isFetchingPlaylist}
+                  onDownload={handleDownload}
+                  isDownloading={isDownloading}
+                  onRefetch={fetchPlaylist}
+                  onCancelDownload={cancelDownload}
+                  currentDownloadId={currentDownloadId}
+                />
               </div>
-            ) : (
-              statuses.map((status: StatusItem) => (
-                <StatusItemComponent key={status.id} {...status} />
-              ))
             )}
+
+            {/* Download Status */}
+            <div className="p-6 rounded-2xl bg-white/5 backdrop-blur-sm border border-white/10">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-2 rounded-xl bg-gradient-to-br from-gray-500 to-slate-600">
+                  <Activity size={18} className="text-white" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-white">Download Status</h3>
+                  <p className="text-xs text-gray-400">Track your downloads</p>
+                </div>
+              </div>
+              
+              <div className="space-y-3 max-h-80 overflow-y-auto">
+                {statuses.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-12 text-gray-400">
+                    <div className="p-4 rounded-2xl bg-white/5 mb-3">
+                      <Download size={32} className="opacity-50" />
+                    </div>
+                    <h4 className="font-medium text-white mb-1">No downloads yet</h4>
+                    <p className="text-xs text-gray-500 text-center">Your downloads will appear here</p>
+                  </div>
+                ) : (
+                  statuses.map((status: StatusItem) => (
+                    <StatusItemComponent key={status.id} {...status} />
+                  ))
+                )}
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -538,7 +637,7 @@ const FormatSelector: React.FC<{ selected: FormatOption; onSelect: (format: Form
     const [isOpen, setIsOpen] = useState(false);
 
     return (
-    <div className="relative">
+    <div className="relative z-10">
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="w-full bg-white/5 border border-white/10 rounded-xl p-4 flex items-center justify-between hover:bg-white/10 transition-colors"
@@ -559,7 +658,7 @@ const FormatSelector: React.FC<{ selected: FormatOption; onSelect: (format: Form
       </button>
 
       {isOpen && (
-        <div className="absolute z-10 w-full mt-2 py-2 bg-[#1A1A1F] border border-white/10 rounded-xl shadow-xl">
+        <div className="absolute z-50 w-full mt-2 py-2 bg-[#1A1A1F] border border-white/10 rounded-xl shadow-2xl backdrop-blur-sm">
           {FORMAT_OPTIONS.map((format) => (
             <button
               key={format.id}

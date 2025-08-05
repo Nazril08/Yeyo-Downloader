@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/tauri';
 import { open } from '@tauri-apps/api/dialog';
-import { Folder, Save, Settings as SettingsIcon, HardDrive, Info, CheckCircle, XCircle, Image } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Folder, Save, Settings as SettingsIcon, HardDrive, Info, CheckCircle, XCircle, ArrowLeft } from 'lucide-react';
 
 interface Settings {
     download_path: string;
@@ -61,6 +62,15 @@ const SettingsPage: React.FC = () => {
                         Settings
                     </h1>
                     <p className="text-gray-400 mt-1">Configure your application preferences</p>
+                </div>
+                <div className="flex items-center gap-3">
+                    <Link
+                        to="/"
+                        className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors text-sm text-gray-300"
+                    >
+                        <ArrowLeft size={16} />
+                        <span>Back</span>
+                    </Link>
                 </div>
             </div>
 
