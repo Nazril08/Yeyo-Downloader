@@ -57,7 +57,7 @@ const DownloaderPage: React.FC = () => {
   const [hasTriedFetch, setHasTriedFetch] = useState(false);
 
   // Use download context
-  const { statuses, isDownloading, setIsDownloading, addStatus } = useDownload();
+  const { statuses, isDownloading, setIsDownloading, addStatus, currentDownloadId, cancelDownload } = useDownload();
 
   const isYoutube = useMemo(() => isYoutubeUrl(url), [url]);
   const isSpotify = useMemo(() => isSpotifyUrl(url), [url]);
@@ -178,11 +178,12 @@ const DownloaderPage: React.FC = () => {
             : "best[ext=mp4]/best";
             
         try {
-            await invoke('download_media', {
+            const downloadId = await invoke<string>('download_media', {
                 url: item.url,
                 quality: qualitySelector,
                 formatType: selectedFormat.type
             });
+            console.log('Download started with ID:', downloadId);
         } catch (error) {
             addStatus({
                 title: item.title,
@@ -328,30 +329,46 @@ const DownloaderPage: React.FC = () => {
                       onDownload={handleDownload}
                       isDownloading={isDownloading}
                       onRefetch={fetchPlaylist}
+                      onCancelDownload={cancelDownload}
+                      currentDownloadId={currentDownloadId}
                   />
                 )}
               </div>
           ) : (
-              <button
-                onClick={handleDownload}
-                disabled={isDownloading || !url.trim() || needsConfig}
-                className="w-full bg-blue-500 hover:bg-blue-600 disabled:bg-gray-700 disabled:cursor-not-allowed text-white font-medium h-12 px-6 rounded-xl flex items-center justify-center gap-2 transition-colors relative overflow-hidden group"
-              >
-                <div className="absolute inset-0 bg-gradient-to-r from-blue-600 to-blue-400 opacity-0 group-hover:opacity-100 transition-opacity" />
-                <div className="relative flex items-center gap-2">
-                  {isDownloading ? (
-                    <>
-                      <Loader size={18} className="animate-spin" />
-                      <span>Downloading...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Download size={18} />
-                      <span>Download Now</span>
-                    </>
-                  )}
-                </div>
-              </button>
+              <div className="flex gap-3">
+                <button
+                  onClick={handleDownload}
+                  disabled={isDownloading || !url.trim() || needsConfig}
+                  className="flex-1 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-700 disabled:cursor-not-allowed text-white font-medium h-12 px-6 rounded-xl flex items-center justify-center gap-2 transition-colors relative overflow-hidden group"
+                >
+                  <div className="absolute inset-0 bg-gradient-to-r from-blue-600 to-blue-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                  <div className="relative flex items-center gap-2">
+                    {isDownloading ? (
+                      <>
+                        <Loader size={18} className="animate-spin" />
+                        <span>Downloading...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Download size={18} />
+                        <span>Download Now</span>
+                      </>
+                    )}
+                  </div>
+                </button>
+                
+                {/* Cancel Button - only show when downloading */}
+                {isDownloading && currentDownloadId && (
+                  <button
+                    onClick={cancelDownload}
+                    className="bg-red-500 hover:bg-red-600 text-white font-medium h-12 px-4 rounded-xl flex items-center justify-center gap-2 transition-colors"
+                    title="Cancel Download"
+                  >
+                    <XCircle size={18} />
+                    <span>Cancel</span>
+                  </button>
+                )}
+              </div>
           )}
         </div>
 
@@ -392,9 +409,21 @@ interface PlaylistViewProps {
     onDownload: () => void;
     isDownloading: boolean;
     onRefetch: () => void;
+    onCancelDownload: () => void;
+    currentDownloadId: string | null;
 }
 
-const PlaylistView: React.FC<PlaylistViewProps> = ({ entries, selectedEntries, setSelectedEntries, isFetching, onDownload, isDownloading, onRefetch }) => {
+const PlaylistView: React.FC<PlaylistViewProps> = ({ 
+    entries, 
+    selectedEntries, 
+    setSelectedEntries, 
+    isFetching, 
+    onDownload, 
+    isDownloading, 
+    onRefetch, 
+    onCancelDownload, 
+    currentDownloadId 
+}) => {
     
     const handleSelectAll = () => {
         if (selectedEntries.size === entries.length) {
@@ -456,6 +485,18 @@ const PlaylistView: React.FC<PlaylistViewProps> = ({ entries, selectedEntries, s
                       {isDownloading ? <Loader size={12} className="animate-spin" /> : <Download size={12} />}
                       Download Selected
                     </button>
+                    
+                    {/* Cancel Button - only show when downloading */}
+                    {isDownloading && currentDownloadId && (
+                      <button
+                        onClick={onCancelDownload}
+                        className="px-3 py-1 text-xs font-medium rounded-md bg-red-500 hover:bg-red-600 text-white flex items-center gap-1"
+                        title="Cancel Download"
+                      >
+                        <XCircle size={12} />
+                        Cancel
+                      </button>
+                    )}
                 </div>
             </div>
             <div className="space-y-2 max-h-96 overflow-y-auto pr-2">
@@ -568,6 +609,20 @@ const StatusItemComponent: React.FC<StatusItem> = ({ title, status, message }) =
           bgColor: "bg-red-400/10",
           borderColor: "border-red-400/20",
           textColor: "text-red-400",
+        };
+      case "cancelled":
+        return {
+          icon: <XCircle size={20} className="text-orange-400" />,
+          bgColor: "bg-orange-400/10",
+          borderColor: "border-orange-400/20",
+          textColor: "text-orange-400",
+        };
+      default:
+        return {
+          icon: <XCircle size={20} className="text-gray-400" />,
+          bgColor: "bg-gray-400/10",
+          borderColor: "border-gray-400/20",
+          textColor: "text-gray-400",
         };
         }
     };
